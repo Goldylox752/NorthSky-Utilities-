@@ -1,10 +1,34 @@
 <script>
-let paid = localStorage.getItem("paid") === "true";
+// 🔐 GLOBAL STATE
+let paid = false;
 let uses = parseInt(localStorage.getItem("uses") || "0");
 
-// 🔥 STATUS
+// 🔥 CHECK ACCESS (REAL BACKEND)
+async function checkAccess() {
+  const email = localStorage.getItem("userEmail");
+  if (!email) return;
+
+  try {
+    const res = await fetch("/api/check-user", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ email })
+    });
+
+    const data = await res.json();
+    paid = data.paid;
+
+  } catch {
+    paid = false;
+  }
+
+  updateStatus();
+}
+
+// 🔥 STATUS UI
 function updateStatus() {
   const el = document.getElementById("usageStatus");
+
   if (paid) {
     el.innerHTML = "✅ Pro User — Unlimited Access";
   } else {
@@ -19,6 +43,28 @@ function saveUser() {
 
   localStorage.setItem("userEmail", email);
   document.getElementById("userStatus").innerText = "✅ Account saved";
+
+  checkAccess(); // 🔥 re-check after saving
+}
+
+// 💳 STRIPE CHECKOUT (WITH EMAIL)
+function goToCheckout(type = "one-time") {
+  const email = localStorage.getItem("userEmail");
+
+  if (!email) {
+    alert("Enter your email first");
+    return;
+  }
+
+  let link = "";
+
+  if (type === "monthly") {
+    link = "https://buy.stripe.com/00w8wIg9lf1a0xpbrq2ZO0v";
+  } else {
+    link = "https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u";
+  }
+
+  window.location.href = `${link}?prefilled_email=${encodeURIComponent(email)}`;
 }
 
 // 📊 LOAD REPORTS
@@ -47,7 +93,7 @@ function loadReports() {
   });
 }
 
-// 🧠 CORE SCORING ENGINE
+// 🧠 SCORING ENGINE
 function calculateScore(input) {
   let score = 50;
 
@@ -56,13 +102,12 @@ function calculateScore(input) {
   if (input.length > 20) score += 10;
   if (input.includes("https")) score += 5;
 
-  // randomness but controlled
   score += Math.floor(Math.random() * 10);
 
   return Math.min(score, 95);
 }
 
-// 📍 INDUSTRY DETECTION
+// 📍 INDUSTRY
 function detectIndustry(input) {
   if (input.includes("plumb")) return "Plumbing";
   if (input.includes("roof")) return "Roofing";
@@ -78,7 +123,8 @@ function delay(ms) {
 
 // 🚀 MAIN ANALYSIS
 async function analyzeSite() {
-  const input = document.getElementById("site").value.toLowerCase();
+  const inputRaw = document.getElementById("site").value;
+  const input = inputRaw.toLowerCase();
   const output = document.getElementById("output");
 
   if (!input) {
@@ -86,7 +132,7 @@ async function analyzeSite() {
     return;
   }
 
-  // 🚫 LIMIT
+  // 🚫 LIMIT (REAL CHECK)
   if (!paid && uses >= 3) {
     output.innerHTML = `
       🚫 Free limit reached (3 analyses)<br><br>
@@ -97,9 +143,7 @@ async function analyzeSite() {
       Small fixes = BIG revenue gains
       </div><br>
 
-      <a href="https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u?success_url=https://north-sky-ai.vercel.app/success.html">
-        <button class="btn">Unlock Full Access</button>
-      </a>
+      <button class="btn" onclick="goToCheckout()">Unlock Full Access</button>
     `;
     return;
   }
@@ -108,7 +152,7 @@ async function analyzeSite() {
   localStorage.setItem("uses", uses);
   updateStatus();
 
-  // 🎬 LOADING UI
+  // 🎬 LOADING
   output.innerHTML = `
     <div>Analyzing website...</div>
     <div style="background:#1e293b;border-radius:8px;overflow:hidden;">
@@ -126,7 +170,6 @@ async function analyzeSite() {
     text.innerText = i + "%";
   }
 
-  // 🎯 SCORE
   const score = calculateScore(input);
   const industry = detectIndustry(input);
 
@@ -138,7 +181,7 @@ async function analyzeSite() {
     "Poor conversion flow"
   ].sort(() => 0.5 - Math.random()).slice(0,3);
 
-  // 🔒 FREE VERSION (HIGH CONVERTING)
+  // 🔒 FREE VERSION
   if (!paid) {
     output.innerHTML = `
       <strong>📊 Website Score: ${score}/100</strong><br><br>
@@ -151,20 +194,14 @@ async function analyzeSite() {
       🔒 See exactly how to increase conversions by 30%+
       </div><br>
 
-      <strong>
-      Your Score: ${score} → ${score + 25}+ 🚀
-      </strong><br><br>
+      <strong>${score} → ${score + 25}+ 🚀</strong><br><br>
 
-      Estimated Revenue Gain: +$1,000–$5,000/mo<br><br>
-
-      <a href="https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u?success_url=https://north-sky-ai.vercel.app/success.html">
-        <button class="btn">Unlock Full Report ($9)</button>
-      </a>
+      <button class="btn" onclick="goToCheckout()">Unlock Full Report ($9)</button>
     `;
     return;
   }
 
-  // 💰 FULL REPORT (PAID)
+  // 💰 FULL REPORT
   const result = `
 📊 Website Score: ${score}/100
 
@@ -175,20 +212,20 @@ async function analyzeSite() {
 🔍 SEO: ${(score/12).toFixed(1)}/10
 💰 Conversion: ${(score/14).toFixed(1)}/10
 
-━━━ CRITICAL ISSUES ━━━
+━━━ ISSUES ━━━
 ${issues.map(i => "❌ " + i).join("\n")}
 
 ━━━ FIXES ━━━
-✔ Add strong headline → +15 points  
-✔ Add testimonials → +10 points  
-✔ Improve CTA → +12 points  
+✔ Add strong headline → +15  
+✔ Add testimonials → +10  
+✔ Improve CTA → +12  
 
 🚀 Potential Score: ${score + 25}+
 `;
 
   output.innerHTML = result.replace(/\n/g, "<br>");
 
-  saveReport(input, result);
+  saveReport(inputRaw, result);
 }
 
 // 💾 SAVE REPORT
@@ -208,7 +245,7 @@ function saveReport(site, result) {
   loadReports();
 }
 
-// INIT
-updateStatus();
+// 🚀 INIT
+checkAccess();
 loadReports();
 </script>
