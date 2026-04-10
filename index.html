@@ -1,7 +1,8 @@
 <script>
 // =============================
-// 🌌 NORTHSKY CORE ENGINE
+// 🌌 NORTHSKY CORE ENGINE (CLEAN)
 // =============================
+
 const NorthSky = {
   state: {
     paid: false,
@@ -27,13 +28,13 @@ NorthSky.init = async function () {
 };
 
 // =============================
-// 🔐 ACCESS CHECK
+// 🔐 CHECK USER ACCESS (Supabase / API)
 // =============================
 NorthSky.checkAccess = async function () {
   try {
     const res = await fetch("/api/check-user", {
       method: "POST",
-      headers: {"Content-Type":"application/json"},
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: this.state.email })
     });
 
@@ -49,7 +50,7 @@ NorthSky.checkAccess = async function () {
 };
 
 // =============================
-// 📊 STATUS UI
+// 📊 UPDATE STATUS UI
 // =============================
 NorthSky.updateStatus = function () {
   const el = document.getElementById("usageStatus");
@@ -59,12 +60,12 @@ NorthSky.updateStatus = function () {
     el.innerHTML = "✅ Pro — Unlimited Access";
   } else {
     const remaining = Math.max(0, this.config.freeLimit - this.state.uses);
-    el.innerHTML = `⚠️ Free Plan — ${remaining} left`;
+    el.innerHTML = `⚠️ Free Plan — ${remaining} uses left`;
   }
 };
 
 // =============================
-// 👤 USER
+// 👤 SAVE USER EMAIL
 // =============================
 NorthSky.saveUser = function () {
   const email = document.getElementById("email").value.trim();
@@ -78,6 +79,7 @@ NorthSky.saveUser = function () {
   localStorage.setItem("ns_email", email);
 
   document.getElementById("userStatus").innerText = "✅ Saved";
+
   this.checkAccess();
 };
 
@@ -90,17 +92,33 @@ NorthSky.checkout = function (type = "one-time") {
     return;
   }
 
-  const url = `${this.config.checkout[type]}?prefilled_email=${encodeURIComponent(this.state.email)}`;
+  const url =
+    this.config.checkout[type] +
+    `?prefilled_email=${encodeURIComponent(this.state.email)}`;
+
   window.location.href = url;
 };
 
 // =============================
-// ⏳ DELAY
+// ⏳ UTIL: delay
 // =============================
-NorthSky.delay = ms => new Promise(res => setTimeout(res, ms));
+NorthSky.delay = (ms) => new Promise(res => setTimeout(res, ms));
 
 // =============================
-// 🚀 ANALYZE
+// 🤖 AI REQUEST WRAPPER (NEW)
+// =============================
+NorthSky.callAI = async function (prompt) {
+  const res = await fetch("/api/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt })
+  });
+
+  return await res.json();
+};
+
+// =============================
+// 🚀 MAIN ANALYZE FUNCTION (CLEAN)
 // =============================
 NorthSky.analyze = async function () {
   const inputEl = document.getElementById("site");
@@ -108,33 +126,19 @@ NorthSky.analyze = async function () {
 
   let site = inputEl.value.trim();
 
-  // ❌ EMPTY
-  if (!site) {
-    output.innerText = "Enter your website URL";
-    return;
-  }
+  // ❌ validation
+  if (!site) return (output.innerText = "Enter your website URL");
+  if (!site.includes(".")) return (output.innerText = "Enter a valid website");
 
-  // ❌ INVALID
-  if (!site.includes(".")) {
-    output.innerText = "Enter a valid website (example.com)";
-    return;
-  }
-
-  // 🔧 AUTO FIX URL
   if (!site.startsWith("http")) {
     site = "https://" + site;
   }
 
-  // 🚫 LIMIT CHECK
+  // 🚫 FREE LIMIT CHECK
   if (!this.state.paid && this.state.uses >= this.config.freeLimit) {
     output.innerHTML = `
       🚫 Free limit reached<br><br>
-      <div class="highlight">
-        Most sites increase conversions 30–50%
-      </div><br>
-      <button class="btn" onclick="NorthSky.checkout()">
-        Unlock Full AI 🚀
-      </button>
+      <button onclick="NorthSky.checkout()">Unlock Full AI 🚀</button>
     `;
     return;
   }
@@ -144,45 +148,40 @@ NorthSky.analyze = async function () {
   localStorage.setItem("ns_uses", this.state.uses);
   this.updateStatus();
 
-  // 🎬 LOADING
+  // 🎬 loading UI
   output.innerHTML = `
-    🤖 Running AI scan...<br><br>
-    🔍 Checking structure...
+    🤖 Running AI scan...<br>
+    🔍 Analyzing site...
   `;
 
-  await this.delay(500);
-  output.innerHTML += "<br>📊 Analyzing conversions...";
-  await this.delay(500);
-  output.innerHTML += "<br>⚡ Building report...<br><br>";
+  await this.delay(600);
 
-  // =============================
-  // 💰 REAL API CALL
-  // =============================
   try {
-    const res = await fetch("/api/analyze", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ site })
-    });
+    // =============================
+    // 💡 REAL AI CALL
+    // =============================
+    const data = await this.callAI(
+      `Analyze this website and give conversion insights:\n\n${site}`
+    );
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      output.innerHTML = data.result || "⚠️ Error analyzing site";
-      return;
-    }
+    const result =
+      data.output?.[0]?.content?.[0]?.text ||
+      data.result ||
+      "No response";
 
     output.innerHTML = `
-      <strong>📊 Full AI Report</strong><br><br>
-      ${data.result.replace(/\n/g, "<br>")}
+      <strong>📊 AI Report</strong><br><br>
+      ${result.replace(/\n/g, "<br>")}
     `;
 
   } catch (err) {
     console.error(err);
-    output.innerHTML = "⚠️ Network error";
+    output.innerHTML = "⚠️ AI request failed";
   }
 };
 
+// =============================
+// 🚀 START
 // =============================
 NorthSky.init();
 </script>
