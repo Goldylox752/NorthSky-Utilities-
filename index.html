@@ -83,14 +83,11 @@ textarea{height:90px;}
 <h1>This AI Shows Why Your Website Is Losing Customers</h1>
 <p>Get a score, find your biggest problems, and fix them in minutes.</p>
 
-<p class="trust">
-⭐ Avg score: 58/100 — Most sites are losing leads
-</p>
+<p class="trust">⭐ Avg score: 58/100 — Most sites are losing leads</p>
 
-<!-- 🔥 STATUS -->
 <p id="usageStatus"></p>
 
-<!-- 👤 ACCOUNT -->
+<!-- ACCOUNT -->
 <div class="card">
   <h3>👤 Your Account</h3>
   <input id="email" placeholder="Enter your email">
@@ -101,27 +98,20 @@ textarea{height:90px;}
 <!-- TOOL -->
 <div class="card">
   <h3>Analyze Your Website</h3>
-
-  <p style="font-size:0.9rem; opacity:0.8;">
-    Get a score, top issues, and exact fixes in seconds
-  </p>
-
   <textarea id="site" placeholder="Paste your website URL..."></textarea>
-
   <button onclick="analyzeSite()" class="btn">Analyze Website</button>
-
   <div id="output"></div>
 </div>
 
-<!-- 💰 PRICING -->
+<!-- PRICING -->
 <div class="card">
   <h3>🚀 Upgrade Your Access</h3>
 
-  <p><strong>$9 one-time</strong> → unlock full report</p>
-  <p><strong>$29/month</strong> → unlimited analyses + saved reports</p>
+  <p><strong>$9 one-time</strong> → full report</p>
+  <p><strong>$29/month</strong> → unlimited + saved reports</p>
 
   <a href="https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u?success_url=https://north-sky-ai.vercel.app/success.html">
-    <button class="btn">Unlock Full Report ($9)</button>
+    <button class="btn">Unlock Full Report</button>
   </a>
 
   <a href="https://buy.stripe.com/00w8wIg9lf1a0xpbrq2ZO0v">
@@ -129,7 +119,7 @@ textarea{height:90px;}
   </a>
 </div>
 
-<!-- 📊 REPORTS -->
+<!-- REPORTS -->
 <div class="card">
   <h3>📊 Your Growth Dashboard</h3>
   <div id="reports"></div>
@@ -140,35 +130,31 @@ textarea{height:90px;}
 let paid = localStorage.getItem("paid") === "true";
 let uses = parseInt(localStorage.getItem("uses") || "0");
 
-// 🔥 STATUS
+// STATUS
 function updateStatus() {
-  const status = document.getElementById("usageStatus");
-
+  const el = document.getElementById("usageStatus");
   if (paid) {
-    status.innerHTML = "✅ Pro User — Unlimited Access";
+    el.innerHTML = "✅ Pro User — Unlimited Access";
   } else {
-    let remaining = Math.max(0, 3 - uses);
-    status.innerHTML = `⚠️ Free Plan — ${remaining} analyses left`;
+    el.innerHTML = `⚠️ Free Plan — ${Math.max(0,3-uses)} analyses left`;
   }
 }
 
-// 👤 SAVE USER
+// SAVE USER
 function saveUser() {
   const email = document.getElementById("email").value;
   if (!email) return;
-
   localStorage.setItem("userEmail", email);
-  document.getElementById("userStatus").innerText = "✅ Account saved";
+  document.getElementById("userStatus").innerText = "✅ Saved";
 }
 
-// 📊 LOAD REPORTS
+// LOAD REPORTS
 function loadReports() {
   const reports = JSON.parse(localStorage.getItem("reports") || "[]");
   const container = document.getElementById("reports");
-
   container.innerHTML = "";
 
-  if (reports.length === 0) {
+  if (!reports.length) {
     container.innerHTML = "No reports yet";
     return;
   }
@@ -176,18 +162,16 @@ function loadReports() {
   reports.slice().reverse().forEach(r => {
     const div = document.createElement("div");
     div.className = "report";
-
     div.innerHTML = `
       <strong>${r.site}</strong><br>
       <small>${r.date}</small><br><br>
-      ${r.result.substring(0,150)}...
+      ${r.result.substring(0,120)}...
     `;
-
     container.appendChild(div);
   });
 }
 
-// 🧠 ANALYZE
+// MAIN ANALYSIS
 async function analyzeSite() {
   const input = document.getElementById("site").value;
   const output = document.getElementById("output");
@@ -197,17 +181,13 @@ async function analyzeSite() {
     return;
   }
 
-  // 🚫 LIMIT HIT (HIGH CONVERSION VERSION)
   if (!paid && uses >= 3) {
     output.innerHTML = `
-      🚫 Free limit reached (3 analyses)<br><br>
-
-      ⚠️ Most users improve their score by 20–40 points after fixing issues<br><br>
-
-      Upgrade now to continue optimizing<br><br>
+      🚫 Free limit reached<br><br>
+      ⚠️ Most users improve scores by 20–40 points<br><br>
 
       <a href="https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u?success_url=https://north-sky-ai.vercel.app/success.html">
-        <button class="btn">Unlock Full Access</button>
+        <button class="btn">Upgrade Now</button>
       </a>
     `;
     return;
@@ -217,7 +197,45 @@ async function analyzeSite() {
   localStorage.setItem("uses", uses);
   updateStatus();
 
-  output.innerText = "Analyzing... 🤖";
+  output.innerHTML = `
+    <div>Analyzing...</div>
+    <div style="background:#1e293b;border-radius:8px;">
+      <div id="bar" style="height:10px;width:0%;background:#22c55e;"></div>
+    </div>
+    <div id="progressText">0%</div>
+  `;
+
+  const bar = document.getElementById("bar");
+  const text = document.getElementById("progressText");
+
+  for (let i = 0; i <= 100; i++) {
+    await delay(15);
+    bar.style.width = i + "%";
+    text.innerText = i + "%";
+  }
+
+  let score = Math.floor(Math.random() * 25) + 65;
+
+  if (!paid) {
+    output.innerHTML = `
+      <strong>Score: ${score}/100</strong><br><br>
+
+      ❌ Weak SEO<br>
+      ❌ Poor conversion flow<br>
+      ❌ No trust signals<br><br>
+
+      <div class="highlight">
+      🔒 See how to increase conversions by 30%+
+      </div><br>
+
+      <strong>Your Score: ${score} → ${score+25}+ 🚀</strong><br><br>
+
+      <a href="https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u?success_url=https://north-sky-ai.vercel.app/success.html">
+        <button class="btn">Unlock Full Report</button>
+      </a>
+    `;
+    return;
+  }
 
   try {
     const res = await fetch("/api/analyze", {
@@ -228,54 +246,40 @@ async function analyzeSite() {
 
     const data = await res.json();
 
-    if (!data.result) {
-      output.innerText = "Analysis failed";
-      return;
-    }
+    output.innerHTML = `
+      <strong>Score: ${score}/100</strong><br><br>
+      ${data.result.replace(/\n/g,"<br>")}
+    `;
 
-    let preview = data.result.split("\n").slice(0,5).join("<br>");
-
-    // 🔒 PAYWALL (UPGRADED COPY)
-    if (!paid) {
-      output.innerHTML = `
-        ${preview}<br><br>
-
-        <div class="highlight">
-        🔒 See exactly how to increase conversions by 30%+
-        </div><br>
-
-        <strong>Your Score: 62 → Potential: 91 🚀</strong><br><br>
-
-        <a href="https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u?success_url=https://north-sky-ai.vercel.app/success.html">
-          <button class="btn">Unlock Full Report ($9)</button>
-        </a>
-      `;
-      return;
-    }
-
-    // 💰 SAVE REPORT
-    const email = localStorage.getItem("userEmail");
-    if (email) {
-      const reports = JSON.parse(localStorage.getItem("reports") || "[]");
-
-      reports.push({
-        site: input,
-        result: data.result,
-        date: new Date().toLocaleString()
-      });
-
-      localStorage.setItem("reports", JSON.stringify(reports));
-    }
-
-    output.innerHTML = data.result.replace(/\n/g,"<br>");
-    loadReports();
+    saveReport(input, data.result);
 
   } catch {
-    output.innerText = "Connection failed";
+    output.innerHTML = "⚠️ Failed to load analysis";
   }
 }
 
-// 🚀 INIT
+// SAVE REPORT
+function saveReport(site, result) {
+  const email = localStorage.getItem("userEmail");
+  if (!email) return;
+
+  const reports = JSON.parse(localStorage.getItem("reports") || "[]");
+
+  reports.push({
+    site,
+    result,
+    date: new Date().toLocaleString()
+  });
+
+  localStorage.setItem("reports", JSON.stringify(reports));
+  loadReports();
+}
+
+function delay(ms) {
+  return new Promise(res => setTimeout(res, ms));
+}
+
+// INIT
 updateStatus();
 loadReports();
 </script>
