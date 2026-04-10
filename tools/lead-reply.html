@@ -1,5 +1,6 @@
 <script>
 let uses = localStorage.getItem('uses') || 0;
+let paid = localStorage.getItem('paid');
 
 function generateReply() {
   const input = document.getElementById('lead').value;
@@ -10,8 +11,8 @@ function generateReply() {
     return;
   }
 
-  // 🔒 LIMIT
-  if (uses >= 3) {
+  // 🔒 LIMIT ONLY IF NOT PAID
+  if (!paid && uses >= 3) {
     output.innerHTML = `
       🚫 Free limit reached<br><br>
       <a href="/" style="color:#38bdf8;">Upgrade to unlock unlimited replies</a>
@@ -20,7 +21,6 @@ function generateReply() {
   }
 
   uses++;
-
   localStorage.setItem('uses', uses);
 
   output.innerText = "Generating...";
