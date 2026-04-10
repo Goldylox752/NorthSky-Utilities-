@@ -17,14 +17,8 @@ body{
   padding:30px;
 }
 
-h1{
-  font-size:2.4rem;
-  margin-bottom:10px;
-}
-
-p{
-  opacity:0.9;
-}
+h1{font-size:2.4rem;margin-bottom:10px;}
+p{opacity:0.9;}
 
 .card{
   background:#1e293b;
@@ -47,12 +41,9 @@ p{
   margin-top:12px;
 }
 
-.btn:hover{
-  transform:scale(1.02);
-  opacity:0.9;
-}
+.btn:hover{transform:scale(1.02);opacity:0.9;}
 
-textarea, input{
+textarea,input{
   width:100%;
   padding:12px;
   border-radius:8px;
@@ -60,9 +51,7 @@ textarea, input{
   margin-top:12px;
 }
 
-textarea{
-  height:90px;
-}
+textarea{height:90px;}
 
 #output{
   margin-top:15px;
@@ -72,10 +61,7 @@ textarea{
   text-align:left;
 }
 
-.trust{
-  color:#22c55e;
-  margin-top:10px;
-}
+.trust{color:#22c55e;margin-top:10px;}
 
 .report{
   background:#0f172a;
@@ -90,42 +76,41 @@ textarea{
 <body>
 
 <h1>This AI Shows Why Your Website Is Losing Customers</h1>
-
 <p>Get a score, find your biggest problems, and fix them in minutes.</p>
-
 <p class="trust">Used by 1,200+ businesses ⚡</p>
+
+<!-- 🔥 STATUS -->
+<p id="usageStatus"></p>
 
 <!-- 👤 ACCOUNT -->
 <div class="card">
   <h3>👤 Your Account</h3>
-
   <input id="email" placeholder="Enter your email">
-
   <button onclick="saveUser()" class="btn">Save Account</button>
-
   <p id="userStatus"></p>
 </div>
 
 <!-- TOOL -->
 <div class="card">
   <h3>Analyze Your Website</h3>
-
   <textarea id="site" placeholder="Paste your website URL..."></textarea>
-
   <button onclick="analyzeSite()" class="btn">Analyze Website</button>
-
   <div id="output"></div>
-
-  <button onclick="analyzeSite()" class="btn">Re-analyze After Fixes</button>
 </div>
 
-<!-- 💰 UPSELL -->
+<!-- 💰 PRICING -->
 <div class="card">
-  <h3>🔓 Unlock Full System</h3>
-  <p>$9 one-time</p>
+  <h3>🚀 Upgrade Your Access</h3>
 
-  <a href="https://buy.stripe.com/bJe7sE9KXdX63JBeDC2ZO0t?success_url=https://north-sky-ai.vercel.app/success.html">
-    <button class="btn">Unlock Unlimited</button>
+  <p><strong>$9 one-time</strong> → unlock full report</p>
+  <p><strong>$29/month</strong> → unlimited analyses + saved reports</p>
+
+  <a href="https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u?success_url=https://north-sky-ai.vercel.app/success.html">
+    <button class="btn">Unlock Full Report ($9)</button>
+  </a>
+
+  <a href="https://buy.stripe.com/00w8wIg9lf1a0xpbrq2ZO0v">
+    <button class="btn">Go Pro ($29/month)</button>
   </a>
 </div>
 
@@ -133,21 +118,31 @@ textarea{
 <div class="card">
   <h3>📊 Your Saved Reports</h3>
   <div id="reports"></div>
-
   <button onclick="loadReports()" class="btn">Refresh Reports</button>
 </div>
 
 <script>
 let paid = localStorage.getItem("paid") === "true";
+let uses = parseInt(localStorage.getItem("uses") || "0");
+
+// 🔥 STATUS UI
+function updateStatus() {
+  const status = document.getElementById("usageStatus");
+
+  if (paid) {
+    status.innerHTML = "✅ Pro User — Unlimited Access";
+  } else {
+    let remaining = Math.max(0, 3 - uses);
+    status.innerHTML = `⚠️ Free Plan — ${remaining} analyses left`;
+  }
+}
 
 // 👤 SAVE USER
 function saveUser() {
   const email = document.getElementById("email").value;
-
   if (!email) return;
 
   localStorage.setItem("userEmail", email);
-
   document.getElementById("userStatus").innerText = "✅ Account saved";
 }
 
@@ -170,14 +165,14 @@ function loadReports() {
     div.innerHTML = `
       <strong>${r.site}</strong><br>
       <small>${r.date}</small><br><br>
-      ${r.result.substring(0, 150)}...
+      ${r.result.substring(0,150)}...
     `;
 
     container.appendChild(div);
   });
 }
 
-// 🧠 AI ANALYSIS
+// 🧠 ANALYZE
 async function analyzeSite() {
   const input = document.getElementById("site").value;
   const output = document.getElementById("output");
@@ -187,15 +182,30 @@ async function analyzeSite() {
     return;
   }
 
+  // 🚫 FREE LIMIT
+  if (!paid && uses >= 3) {
+    output.innerHTML = `
+      🚫 Free limit reached (3 analyses)<br><br>
+      Upgrade to continue<br><br>
+
+      <a href="https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u?success_url=https://north-sky-ai.vercel.app/success.html">
+        <button class="btn">Upgrade Now</button>
+      </a>
+    `;
+    return;
+  }
+
+  uses++;
+  localStorage.setItem("uses", uses);
+  updateStatus();
+
   output.innerText = "Analyzing... 🤖";
 
   try {
     const res = await fetch("/api/analyze", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ site: input })
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({site:input})
     });
 
     const data = await res.json();
@@ -205,13 +215,13 @@ async function analyzeSite() {
       return;
     }
 
-    let preview = data.result.split("\n").slice(0, 5).join("<br>");
+    let preview = data.result.split("\n").slice(0,5).join("<br>");
 
     // 🔒 PAYWALL
     if (!paid) {
       output.innerHTML = `
         ${preview}<br><br>
-        🔒 See exactly how to fix this and increase conversions<br><br>
+        🔒 Unlock full analysis + fixes<br><br>
 
         <a href="https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u?success_url=https://north-sky-ai.vercel.app/success.html">
           <button class="btn">Unlock Full Report ($9)</button>
@@ -220,9 +230,8 @@ async function analyzeSite() {
       return;
     }
 
-    // 💰 SAVE REPORT (only paid users)
+    // 💰 SAVE REPORT
     const email = localStorage.getItem("userEmail");
-
     if (email) {
       const reports = JSON.parse(localStorage.getItem("reports") || "[]");
 
@@ -235,17 +244,16 @@ async function analyzeSite() {
       localStorage.setItem("reports", JSON.stringify(reports));
     }
 
-    // 💰 FULL OUTPUT
-    output.innerHTML = data.result.replace(/\n/g, "<br>");
-
+    output.innerHTML = data.result.replace(/\n/g,"<br>");
     loadReports();
 
-  } catch (err) {
+  } catch {
     output.innerText = "Connection failed";
   }
 }
 
 // 🚀 INIT
+updateStatus();
 loadReports();
 </script>
 
