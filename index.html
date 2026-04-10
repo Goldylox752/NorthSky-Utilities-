@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>NorthSky Utilities</title>
+
+<style>
+body{
+  font-family:Arial;
+  background:#020617;
+  color:white;
+  text-align:center;
+  padding:30px;
+}
+
+h1 {
+  margin-top: 15px;
+  font-size: 2.2rem;
+}
+
+.card {
+  background:#1e293b;
+  padding:20px;
+  border-radius:12px;
+  margin-top:20px;
+  max-width:500px;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.btn{
+  padding:14px;
+  width:100%;
+  background:#38bdf8;
+  border:none;
+  border-radius:8px;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+.btn:hover {
+  opacity: 0.9;
+  transform: scale(1.02);
+}
+
+.small{
+  font-size:0.9rem;
+  opacity:0.8;
+}
+
+textarea{
+  width:100%;
+  padding:10px;
+  border-radius:8px;
+  border:none;
+  margin-top:10px;
+  height:100px;
+}
+
+#output{
+  margin-top:15px;
+  padding:10px;
+  background:#0f172a;
+  border-radius:8px;
+  min-height:50px;
+}
+</style>
+</head>
+
+<body>
+
+<p>💰 Businesses lose 60% of leads due to slow replies</p>
+
+<h1>Stop Losing Leads — Let AI Reply Instantly (24/7)</h1>
+
+<p class="small">
+Capture, respond, and convert every lead automatically with simple AI tools.
+</p>
+
+<p style="color:#22c55e;">Used by 1,200+ small businesses ⚡</p>
+
+<!-- 🔐 STATUS -->
+<p id="status" style="color:#22c55e;"></p>
+
+<!-- 🚀 MAIN OFFER -->
+<div class="card">
+  <h2>🚀 AI Lead System</h2>
+
+  <p style="text-decoration:line-through; opacity:0.6;">$499</p>
+  <p style="font-size:2rem; color:#facc15;">$99</p>
+
+  <p>✔ Captures leads automatically</p>
+  <p>✔ Replies instantly with AI</p>
+  <p>✔ Converts while you sleep</p>
+
+  <a href="https://buy.stripe.com/cNi6oA1eraKU7ZR1QQ2ZO0u?success_url=https://north-sky-ai.vercel.app/success.html">
+    <button class="btn">🔥 Get Instant Access</button>
+  </a>
+
+  <p style="color:#22c55e;">Only 27 spots left this week</p>
+</div>
+
+<!-- 💬 AI TOOL -->
+<div class="card">
+  <h3>💬 AI Reply Tool</h3>
+
+  <textarea id="lead" placeholder="Paste a lead message here..."></textarea>
+
+  <button onclick="generateReply()" class="btn">
+    Generate Reply
+  </button>
+
+  <div id="output"></div>
+</div>
+
+<!-- 📜 HISTORY -->
+<div class="card">
+  <h3>📜 Your Replies</h3>
+  <div id="history"></div>
+
+  <button onclick="clearHistory()" class="btn" style="margin-top:10px;">
+    Clear History
+  </button>
+</div>
+
+<!-- 💰 UPSELL -->
+<div class="card">
+  <h3>🔓 Want Unlimited Replies?</h3>
+  <p>$9 one-time</p>
+
+  <a href="https://buy.stripe.com/bJe7sE9KXdX63JBeDC2ZO0t?success_url=https://north-sky-ai.vercel.app/success.html">
+    <button class="btn">Unlock Tool</button>
+  </a>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  let uses = parseInt(localStorage.getItem('uses')) || 0;
+  let paid = localStorage.getItem('paid') === "true";
+
+  const status = document.getElementById("status");
+
+  // 🔐 STATUS DISPLAY
+  if (paid) {
+    status.innerText = "✅ Unlimited access unlocked";
+  } else {
+    status.innerText = "⚠️ Free plan (3 uses)";
+  }
+
+  function loadHistory() {
+    const history = JSON.parse(localStorage.getItem('history')) || [];
+    const list = document.getElementById('history');
+
+    list.innerHTML = "";
+
+    history.slice().reverse().forEach(item => {
+      const div = document.createElement('div');
+      div.style.marginTop = "10px";
+      div.style.padding = "10px";
+      div.style.background = "#0f172a";
+      div.style.borderRadius = "8px";
+
+      div.innerHTML = `
+        <strong>Lead:</strong> ${item.input}<br><br>
+        <strong>Reply:</strong> ${item.reply}
+      `;
+
+      list.appendChild(div);
+    });
+  }
+
+  window.generateReply = async function() {
+    const input = document.getElementById('lead').value;
+    const output = document.getElementById('output');
+
+    if (!input) {
+      output.innerText = "Enter a message";
+      return;
+    }
+
+    if (!paid && uses >= 3) {
+      output.innerHTML = `
+        🚫 Free limit reached<br><br>
+        <a href="/" style="color:#38bdf8;">Upgrade to unlock unlimited replies</a>
+      `;
+      return;
+    }
+
+    uses++;
+    localStorage.setItem('uses', uses);
+
+    output.innerText = "Thinking... 🤖";
+
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: input })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        output.innerText = data.reply;
+
+        const history = JSON.parse(localStorage.getItem('history')) || [];
+
+        history.push({
+          input: input,
+          reply: data.reply
+        });
+
+        localStorage.setItem('history', JSON.stringify(history));
+
+        loadHistory();
+
+      } else {
+        output.innerText = data.error || "Error";
+      }
+
+    } catch (err) {
+      output.innerText = "Connection failed";
+    }
+  }
+
+  window.clearHistory = function() {
+    localStorage.removeItem('history');
+    location.reload();
+  }
+
+  loadHistory();
+});
+</script>
+
+</body>
+</html>
