@@ -1,4 +1,5 @@
-/* ================= CORE ================= */
+require('dotenv').config();
+
 const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
@@ -6,19 +7,34 @@ const crypto = require("crypto");
 const cors = require("cors");
 const Stripe = require("stripe");
 const { v4: uuidv4 } = require("uuid");
-require("dotenv").config();
+
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-/* ================= STRIPE WEBHOOK (RAW MUST BE FIRST) ================= */
+/* =========================
+   DATABASE (REAL PERSISTENCE FIX)
+========================= */
+
+const db = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
+
+/* =========================
+   MIDDLEWARE
+========================= */
+
+app.use(cors());
+
+/* Stripe webhook MUST stay raw */
 app.post(
   "/api/webhook",
   express.raw({ type: "application/json" }),
-  (req, res) => {
-    const sig = req.headers["stripe-signature"];
+  async (req, res) => {
 
+    const sig = req.headers["stripe-signature"];
     let event;
 
     try {
@@ -28,23 +44,28 @@ app.post(
         process.env.STRIPE_WEBHOOK_SECRET
       );
     } catch (err) {
-      return res.status(400).send(`Webhook Error: ${err.message}`);
+      return res.status(400).send(err.message);
     }
 
+    /* =========================
+       SUBSCRIPTION UPGRADE
+    ========================= */
+
     if (event.type === "checkout.session.completed") {
+
       const session = event.data.object;
       const apiKey = session.metadata?.apiKey;
 
-      if (apiKey && users.has(apiKey)) {
-        const user = users.get(apiKey);
+      if (apiKey) {
+        await db
+          .from("users")
+          .update({
+            plan: "pro",
+            limit: 1000
+          })
+          .eq("api_key", apiKey);
 
-        user.plan = "pro";
-        user.limit = 1000;
-        user.usage = 0;
-
-        users.set(apiKey, user);
-
-        console.log("💳 PRO UPGRADED:", apiKey);
+        console.log("💳 USER UPGRADED:", apiKey);
       }
     }
 
@@ -52,34 +73,13 @@ app.post(
   }
 );
 
-/* ================= NORMAL MIDDLEWARE ================= */
-app.use(cors());
-app.use(express.json());
+/* JSON AFTER WEBHOOK */
+app.use(express.json({ limit: "10kb" }));
 
-app.use((req, res, next) => {
-  console.log(`➡️ ${req.method} ${req.url}`);
-  next();
-});
+/* =========================
+   HELPERS
+========================= */
 
-/* ================= MEMORY DB ================= */
-const users = new Map();
-const cache = new Map();
-
-const CACHE_TTL = 1000 * 60 * 30;
-
-/* ================= CACHE ================= */
-function getCache(key) {
-  const item = cache.get(key);
-  if (!item) return null;
-  if (Date.now() - item.time > CACHE_TTL) return null;
-  return item.data;
-}
-
-function setCache(key, data) {
-  cache.set(key, { data, time: Date.now() });
-}
-
-/* ================= HELPERS ================= */
 function normalizeURL(input) {
   try {
     if (!input) return null;
@@ -90,62 +90,87 @@ function normalizeURL(input) {
   }
 }
 
-function isURL(str) {
-  try {
-    new URL(str.startsWith("http") ? str : "https://" + str);
-    return true;
-  } catch {
-    return false;
+/* =========================
+   AUTH (NOW DATABASE-BASED)
+========================= */
+
+async function auth(req, res, next) {
+
+  const apiKey = req.headers["x-api-key"];
+
+  if (!apiKey) {
+    return res.status(401).json({ error: "missing_api_key" });
   }
+
+  const { data, error } = await db
+    .from("users")
+    .select("*")
+    .eq("api_key", apiKey)
+    .single();
+
+  if (!data) {
+    return res.status(403).json({ error: "invalid_api_key" });
+  }
+
+  req.user = data;
+  next();
 }
 
-/* ================= FETCH ================= */
+/* =========================
+   RATE LIMIT (BASIC SAFETY)
+========================= */
+
+const rateMap = new Map();
+
+function rateLimit(req, res, next) {
+  const key = req.headers["x-api-key"] || req.ip;
+
+  const now = Date.now();
+  const window = 60 * 1000;
+
+  if (!rateMap.has(key)) {
+    rateMap.set(key, []);
+  }
+
+  const timestamps = rateMap.get(key).filter(t => now - t < window);
+
+  if (timestamps.length > 20) {
+    return res.status(429).json({ error: "rate_limited" });
+  }
+
+  timestamps.push(now);
+  rateMap.set(key, timestamps);
+
+  next();
+}
+
+/* =========================
+   SCRAPER CORE
+========================= */
+
 async function fetchHTML(url) {
   try {
     const res = await axios.get(url, {
       timeout: 12000,
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-      },
+        "User-Agent": "Mozilla/5.0"
+      }
     });
+
     return res.data;
   } catch {
     return null;
   }
 }
 
-/* ================= PARSER ================= */
-function parseHTML(html, url) {
-  const $ = cheerio.load(html);
-
-  return {
-    title:
-      $("meta[property='og:title']").attr("content") ||
-      $("title").text().trim() ||
-      "Untitled",
-
-    description:
-      $("meta[name='description']").attr("content") ||
-      $("meta[property='og:description']").attr("content") ||
-      $("p").first().text().trim().slice(0, 200) ||
-      "",
-
-    image: $("meta[property='og:image']").attr("content") || null,
-    site: new URL(url).hostname.replace("www.", "")
-  };
-}
-
-/* ================= SCORING ENGINE ================= */
 function analyzeHTML(html, url) {
+
   const $ = cheerio.load(html);
 
   const title = $("title").text() || "";
   const desc = $("meta[name='description']").attr("content") || "";
   const h1 = $("h1").length;
-  const imgs = $("img").length;
   const links = $("a").length;
-  const ssl = url.startsWith("https");
 
   let seo = 50;
   let ux = 50;
@@ -154,14 +179,11 @@ function analyzeHTML(html, url) {
   if (title.length > 10) seo += 10;
   if (desc.length > 20) seo += 15;
   if (h1 > 0) seo += 10;
-  if (links > 5) seo += 10;
 
-  if (imgs > 0) ux += 10;
+  if (links > 5) ux += 10;
   if (h1 > 0) ux += 10;
 
-  if (desc.length > 50) conv += 10;
-  if (links > 3) conv += 10;
-  if (ssl) conv += 10;
+  if (desc.length > 40) conv += 10;
 
   return {
     seo: Math.min(seo, 100),
@@ -170,172 +192,94 @@ function analyzeHTML(html, url) {
   };
 }
 
-/* ================= AUTH + LIMIT ================= */
-function checkLimit(req, res, next) {
-  const apiKey = req.headers["x-api-key"];
+/* =========================
+   LOGGING (IMPORTANT UPGRADE)
+========================= */
 
-  if (!apiKey || !users.has(apiKey)) {
-    return res.status(401).json({ error: "invalid_api_key" });
-  }
-
-  const user = users.get(apiKey);
-
-  if (user.usage >= user.limit) {
-    return res.status(429).json({
-      error: "limit_reached",
-      plan: user.plan
-    });
-  }
-
-  user.usage++;
-  users.set(apiKey, user);
-
-  req.user = user;
-  next();
+async function logEvent(data) {
+  await db.from("logs").insert([data]);
 }
 
-/* ================= ENGINE ================= */
-async function scrape(url) {
-  const html = await fetchHTML(url);
-  if (!html) return { success: false };
+/* =========================
+   USER CREATE
+========================= */
 
-  return {
-    success: true,
-    metadata: parseHTML(html, url)
-  };
-}
+app.post("/api/create-user", async (req, res) => {
 
-/* ================= SEARCH ================= */
-async function searchEngine(query) {
-  return {
-    success: true,
-    query,
-    results: [
-      {
-        title: `Search: ${query}`,
-        url: `https://example.com?q=${encodeURIComponent(query)}`
-      }
-    ]
-  };
-}
-
-/* ================= USER SYSTEM ================= */
-app.post("/api/create-user", (req, res) => {
   const apiKey = uuidv4();
 
-  users.set(apiKey, {
-    apiKey,
+  await db.from("users").insert([{
+    api_key: apiKey,
     plan: "free",
     usage: 0,
     limit: 5
-  });
+  }]);
 
   res.json({
-    success: true,
     apiKey,
     plan: "free"
   });
 });
 
-/* ================= STRIPE SUBSCRIBE ($29) ================= */
-app.post("/api/subscribe", async (req, res) => {
-  const { apiKey } = req.body;
+/* =========================
+   ANALYZE ENGINE
+========================= */
 
-  if (!users.has(apiKey)) {
-    return res.status(400).json({ error: "invalid_user" });
-  }
+app.post("/api/analyze", rateLimit, auth, async (req, res) => {
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: "NorthSky AI Auditor Pro"
-          },
-          unit_amount: 2900,
-          recurring: { interval: "month" }
-        },
-        quantity: 1
-      }
-    ],
-    metadata: {
-      apiKey
-    },
-    success_url: `${process.env.BASE_URL}/success`,
-    cancel_url: `${process.env.BASE_URL}/cancel`
-  });
+  try {
 
-  res.json({ url: session.url });
-});
+    const url = normalizeURL(req.body.site);
+    if (!url) return res.status(400).json({ error: "invalid_url" });
 
-/* ================= ROUTES ================= */
-app.get("/api/rip", checkLimit, async (req, res) => {
-  const url = normalizeURL(req.query.url);
-  if (!url) return res.status(400).json({ error: "invalid_url" });
+    const html = await fetchHTML(url);
+    if (!html) return res.status(500).json({ error: "fetch_failed" });
 
-  const result = await scrape(url);
-  res.json(result);
-});
+    const scores = analyzeHTML(html, url);
 
-app.post("/api/analyze", checkLimit, async (req, res) => {
-  const url = normalizeURL(req.body.site);
-  const html = await fetchHTML(url);
+    /* update usage */
+    await db
+      .from("users")
+      .update({ usage: req.user.usage + 1 })
+      .eq("api_key", req.user.api_key);
 
-  if (!html) return res.status(500).json({ error: "fetch_failed" });
+    /* log for CRM intelligence */
+    await logEvent({
+      api_key: req.user.api_key,
+      url,
+      scores,
+      created_at: new Date().toISOString()
+    });
 
-  const meta = parseHTML(html, url);
-  const scores = analyzeHTML(html, url);
-
-  res.json({
-    success: true,
-    meta,
-    scores,
-    result: `
+    res.json({
+      success: true,
+      result: `
 SEO Score: ${scores.seo}/100
 UX Score: ${scores.ux}/100
 Conversion Score: ${scores.conv}/100
-    `.trim()
-  });
-});
+      `.trim()
+    });
 
-app.get("/api/ask", checkLimit, async (req, res) => {
-  const q = req.query.q;
-  const result = await searchEngine(q);
-  res.json(result);
-});
-
-/* ================= USER STATUS ================= */
-app.get("/api/me", (req, res) => {
-  const apiKey = req.headers["x-api-key"];
-
-  if (!apiKey || !users.has(apiKey)) {
-    return res.status(401).json({ error: "invalid_user" });
+  } catch (err) {
+    res.status(500).json({ error: "server_error" });
   }
-
-  const user = users.get(apiKey);
-
-  res.json({
-    plan: user.plan,
-    usage: user.usage,
-    limit: user.limit,
-    remaining: user.limit - user.usage
-  });
 });
 
-/* ================= HEALTH ================= */
+/* =========================
+   HEALTH
+========================= */
+
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
-    uptime: process.uptime(),
-    users: users.size,
-    cache: cache.size
+    service: "NorthSky Revenue OS v4"
   });
 });
 
-/* ================= START ================= */
-app.listen(PORT, () => {
-  console.log(`🚀 NorthSky OS v3 PRO SaaS running on ${PORT}`);
+/* =========================
+   START
+========================= */
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log("🚀 NorthSky Revenue OS v4 running");
 });
